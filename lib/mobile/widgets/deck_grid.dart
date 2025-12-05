@@ -44,20 +44,4 @@ class DeckGrid extends StatelessWidget {
       ),
     );
   }
-
-  IconData _getIconForIndex(int index) {
-    const icons = [
-      Icons.apps,
-      Icons.camera,
-      Icons.mic_off,
-      Icons.volume_up,
-      Icons.play_arrow,
-      Icons.pause,
-      Icons.skip_next,
-      Icons.home,
-      Icons.settings,
-    ];
-    if (index < icons.length) return icons[index];
-    return Icons.touch_app;
-  }
 }

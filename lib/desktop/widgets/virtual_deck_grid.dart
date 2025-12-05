@@ -260,14 +260,16 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                               }
                             },
                             style: IconButton.styleFrom(
-                              backgroundColor: Colors.white.withOpacity(0.1),
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.1,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.folder_open,
-                              color: Colors.white70,
+                              color: Colors.white.withValues(alpha: 0.7),
                             ),
                             tooltip: 'Browse',
                           ),

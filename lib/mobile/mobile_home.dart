@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:nsd/nsd.dart';
 import '../client/client_service.dart';
 import '../../shared/action_model.dart';
 import 'widgets/connection_screen.dart';
 import 'widgets/deck_grid.dart';
 import 'package:flutter/services.dart';
+import 'package:docker_portal/mobile/services/mobile_discovery_service.dart';
 
 class MobileHome extends StatefulWidget {
   const MobileHome({super.key});
@@ -15,12 +17,19 @@ class MobileHome extends StatefulWidget {
 
 class _MobileHomeState extends State<MobileHome> {
   ClientService? _clientService;
+  MobileDiscoveryService? _discoveryService;
   String _status = 'Disconnected';
   Map<int, DeckAction> _actions = {};
+  List<Service> _discoveredServices = [];
 
   @override
   void initState() {
     super.initState();
+    _initServices();
+  }
+
+  void _initServices() {
+    // Client Service
     _clientService = ClientService(
       onLog: (log) {
         if (log.startsWith('Connected')) {
@@ -38,34 +47,48 @@ class _MobileHomeState extends State<MobileHome> {
       },
       onMessage: (message) {
         if (message.startsWith('SYNC:')) {
-          try {
-            final jsonStr = message.substring(5);
-            if (jsonStr.isEmpty) return; // Prevent empty doc error
-
-            final data = jsonDecode(jsonStr);
-            final List<dynamic> list = data['actions'];
-            final Map<int, DeckAction> newActions = {};
-            for (var item in list) {
-              final action = DeckAction.fromJson(item);
-              final indexStr = action.id.split('_').last;
-              final index = int.tryParse(indexStr);
-              if (index != null) {
-                newActions[index] = action;
-              }
-            }
-            if (mounted) {
-              setState(() => _actions = newActions);
-            }
-            // Don't log full sync message as it's huge
-            debugPrint('Received SYNC with ${newActions.length} actions');
-          } catch (e) {
-            debugPrint('Error parsing sync data: $e');
-          }
+          _handleSync(message);
         } else {
           debugPrint('Message: $message');
         }
       },
     );
+
+    // Discovery Service
+    _discoveryService = MobileDiscoveryService(
+      onLog: (log) => debugPrint('Discovery: $log'),
+    );
+    _discoveryService!.servicesStream.listen((services) {
+      if (mounted) {
+        setState(() => _discoveredServices = services);
+      }
+    });
+    _discoveryService!.startDiscovery();
+  }
+
+  void _handleSync(String message) {
+    try {
+      final jsonStr = message.substring(5);
+      if (jsonStr.isEmpty) return;
+
+      final data = jsonDecode(jsonStr);
+      final List<dynamic> list = data['actions'];
+      final Map<int, DeckAction> newActions = {};
+      for (var item in list) {
+        final action = DeckAction.fromJson(item);
+        final indexStr = action.id.split('_').last;
+        final index = int.tryParse(indexStr);
+        if (index != null) {
+          newActions[index] = action;
+        }
+      }
+      if (mounted) {
+        setState(() => _actions = newActions);
+      }
+      debugPrint('Received SYNC with ${newActions.length} actions');
+    } catch (e) {
+      debugPrint('Error parsing sync data: $e');
+    }
   }
 
   Future<void> _switchToLandscape() async {
@@ -84,7 +107,8 @@ class _MobileHomeState extends State<MobileHome> {
   @override
   void dispose() {
     _clientService?.disconnect();
-    _switchToPortrait(); // Reset on exit
+    _discoveryService?.stopDiscovery();
+    _switchToPortrait();
     super.dispose();
   }
 
@@ -110,7 +134,7 @@ class _MobileHomeState extends State<MobileHome> {
       floatingActionButton: _status == 'Connected'
           ? FloatingActionButton(
               mini: true,
-              backgroundColor: Colors.red.withOpacity(0.5),
+              backgroundColor: Colors.red.withValues(alpha: 0.5),
               onPressed: () => _clientService?.disconnect(),
               child: const Icon(Icons.close),
             )
@@ -120,7 +144,10 @@ class _MobileHomeState extends State<MobileHome> {
         duration: const Duration(milliseconds: 300),
         child: _status == 'Connected'
             ? DeckGrid(onCommand: _sendCommand, actions: _actions)
-            : ConnectionScreen(onConnect: _connect),
+            : ConnectionScreen(
+                onConnect: _connect,
+                discoveredServices: _discoveredServices,
+              ),
       ),
     );
   }
