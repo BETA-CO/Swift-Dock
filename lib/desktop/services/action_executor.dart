@@ -1,6 +1,5 @@
 import 'package:url_launcher/url_launcher.dart';
 import 'package:process_run/shell.dart';
-import '../../server/server_service.dart';
 import '../../shared/action_model.dart';
 
 class ActionExecutor {

@@ -42,7 +42,7 @@ class ServerService {
 
   Future<void> startServer() async {
     var handler = webSocketHandler((webSocket, protocol) {
-      final channel = webSocket as WebSocketChannel;
+      final channel = webSocket;
       _clients.add(channel);
       onLog('New client connected');
 

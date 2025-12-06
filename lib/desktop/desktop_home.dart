@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:docker_portal/desktop/widgets/virtual_deck_grid.dart';
 import 'package:docker_portal/desktop/services/action_executor.dart';
 import 'package:docker_portal/shared/action_model.dart';
+import 'package:docker_portal/desktop/services/discovery_service.dart';
 
 class DesktopHome extends StatefulWidget {
   const DesktopHome({super.key});
@@ -19,6 +20,7 @@ class DesktopHome extends StatefulWidget {
 class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   ServerService? _serverService;
   ActionExecutor? _actionExecutor;
+  DiscoveryService? _discoveryService;
   String _ipAddress = 'Fetching...';
   final List<String> _logs = [];
   final TrayService _trayService = TrayService();
@@ -31,6 +33,8 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    // Initialize DiscoveryService
+    _discoveryService = DiscoveryService(onLog: (msg) => _log(msg));
     _initServices();
   }
 
@@ -40,7 +44,13 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
 
     _actionExecutor = ActionExecutor(onLog: (message) => _log(message));
 
-    _startServer();
+    await _startServer();
+
+    // Register service after server starts
+    // We register on port 8080 as hardcoded in ServerService
+    if (_serverService != null) {
+      await _discoveryService?.registerService(8080);
+    }
   }
 
   Future<void> _loadActions() async {
@@ -80,8 +90,8 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
 
   @override
   void onWindowClose() async {
-    bool _isPreventClose = await windowManager.isPreventClose();
-    if (_isPreventClose) {
+    bool isPreventClose = await windowManager.isPreventClose();
+    if (isPreventClose) {
       windowManager.hide();
     }
   }
@@ -153,6 +163,7 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   void dispose() {
     windowManager.removeListener(this);
     _serverService?.stopServer();
+    _discoveryService?.unregisterService();
     super.dispose();
   }
 
