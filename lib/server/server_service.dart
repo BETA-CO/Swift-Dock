@@ -9,8 +9,9 @@ class ServerService {
   HttpServer? _server;
   final List<WebSocketChannel> _clients = [];
   final Function(String) onLog;
+  final Function(String)? onMessage;
 
-  ServerService({required this.onLog});
+  ServerService({required this.onLog, this.onMessage});
 
   Future<String?> getIpAddress() async {
     try {
@@ -49,6 +50,7 @@ class ServerService {
       webSocket.stream.listen(
         (message) {
           onLog('Received: $message');
+          onMessage?.call(message.toString());
         },
         onDone: () {
           _clients.remove(webSocket);

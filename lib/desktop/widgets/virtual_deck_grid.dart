@@ -8,12 +8,23 @@ import '../services/metadata_service.dart';
 class VirtualDeckGrid extends StatefulWidget {
   final Map<String, DeckAction> actions;
   final Function(DeckAction) onActionConfigured;
+  final Function(String) onActionRemoved;
+  final int rows;
+  final int columns;
+  final Function(int, int) onActionReordered;
 
   const VirtualDeckGrid({
     super.key,
     required this.actions,
     required this.onActionConfigured,
+    required this.onActionRemoved,
+    this.rows = 3,
+    this.columns = 5,
+    required this.onActionReordered,
+    this.activeIndices = const {},
   });
+
+  final Set<int> activeIndices;
 
   @override
   State<VirtualDeckGrid> createState() => _VirtualDeckGridState();
@@ -40,17 +51,45 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
             const SizedBox(height: 32),
             Expanded(
               child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 5,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: widget.columns,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
                   childAspectRatio: 1.0,
                 ),
-                itemCount: 15,
+                itemCount: widget.rows * widget.columns,
                 itemBuilder: (context, index) {
                   final actionKey = 'action_$index';
                   final action = widget.actions[actionKey];
-                  return _buildGridSlot(index, action);
+                  return DragTarget<int>(
+                    onWillAccept: (data) => data != null && data != index,
+                    onAccept: (fromIndex) {
+                      widget.onActionReordered(fromIndex, index);
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      return LongPressDraggable<int>(
+                        data: index,
+                        hapticFeedbackOnStart: true,
+                        feedback: Material(
+                          color: Colors.transparent,
+                          child: SizedBox(
+                            width: 100,
+                            height: 100,
+                            child: _buildGridSlot(
+                              index,
+                              action,
+                              isFeedback: true,
+                            ),
+                          ),
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.3,
+                          child: _buildGridSlot(index, action),
+                        ),
+                        child: _buildGridSlot(index, action),
+                      );
+                    },
+                  );
                 },
               ),
             ),
@@ -60,29 +99,41 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
     );
   }
 
-  Widget _buildGridSlot(int index, DeckAction? action) {
+  Widget _buildGridSlot(
+    int index,
+    DeckAction? action, {
+    bool isFeedback = false,
+  }) {
     return InkWell(
       onTap: () => _showConfigurationDialog(index, action),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          color: action != null
-              ? Theme.of(context).colorScheme.primaryContainer
+          color: (action != null)
+              ? (isFeedback || widget.activeIndices.contains(index)
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.primaryContainer)
               : Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: action != null
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+            color: (action != null)
+                ? (isFeedback || widget.activeIndices.contains(index)
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary.withOpacity(0.5))
                 : Colors.white.withOpacity(0.1),
-            width: action != null ? 2 : 1,
+            width:
+                (action != null &&
+                    (isFeedback || widget.activeIndices.contains(index)))
+                ? 4
+                : (action != null ? 2 : 1),
           ),
           boxShadow: action != null
               ? [
                   BoxShadow(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withOpacity(0.3),
-                    blurRadius: 12,
+                    color: Theme.of(context).colorScheme.primary.withValues(
+                      alpha: widget.activeIndices.contains(index) ? 0.8 : 0.3,
+                    ),
+                    blurRadius: widget.activeIndices.contains(index) ? 20 : 12,
                     offset: const Offset(0, 4),
                   ),
                 ]
@@ -211,71 +262,121 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Dynamic Data Field
-                    Text(
-                      _getTargetLabel(selectedType),
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: dataController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: _getHintText(selectedType),
-                              hintStyle: TextStyle(
-                                color: Colors.grey.withOpacity(0.5),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withOpacity(0.05),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
+                    // Dynamic Data Field or Macro Editor
+                    if (selectedType == ActionType.macro) ...[
+                      const Text(
+                        'Macro Actions',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white12),
                         ),
-                        if (selectedType == ActionType.openApp) ...[
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () async {
-                              FilePickerResult? result = await FilePicker
-                                  .platform
-                                  .pickFiles();
-                              if (result != null) {
-                                final path = result.files.single.path!;
-                                dataController.text = path;
-                                // Auto-suggest label
-                                if (labelController.text.isEmpty) {
-                                  labelController.text =
-                                      MetadataService.getAppNameFromPath(path);
-                                }
-                                setStateDialog(() {});
-                              }
-                            },
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.1,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: _buildMacroList(
+                                dataController,
+                                () => setStateDialog(() {}),
                               ),
                             ),
-                            icon: Icon(
-                              Icons.folder_open,
-                              color: Colors.white.withValues(alpha: 0.7),
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: ElevatedButton.icon(
+                                onPressed: () => _showAddMacroActionDialog(
+                                  context,
+                                  dataController,
+                                  () => setStateDialog(() {}),
+                                ),
+                                icon: const Icon(Icons.add, size: 16),
+                                label: const Text('Add Action'),
+                              ),
                             ),
-                            tooltip: 'Browse',
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      Text(
+                        _getTargetLabel(selectedType),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: dataController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: _getHintText(selectedType),
+                                hintStyle: TextStyle(
+                                  color: Colors.grey.withOpacity(0.5),
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
                           ),
+                          if (selectedType == ActionType.openApp) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: () async {
+                                FilePickerResult? result = await FilePicker
+                                    .platform
+                                    .pickFiles();
+                                if (result != null) {
+                                  final path = result.files.single.path!;
+                                  dataController.text = path;
+                                  // Auto-suggest label
+                                  if (labelController.text.isEmpty) {
+                                    labelController.text =
+                                        MetadataService.getAppNameFromPath(
+                                          path,
+                                        );
+                                  }
+                                  // Auto-fetch icon
+                                  if (pickedImageBase64 == null) {
+                                    pickedImageBase64 =
+                                        await MetadataService.fetchAppIcon(
+                                          path,
+                                        );
+                                  }
+                                  setStateDialog(() {});
+                                }
+                              },
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.1,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              icon: Icon(
+                                Icons.folder_open,
+                                color: Colors.white.withValues(alpha: 0.7),
+                              ),
+                              tooltip: 'Browse',
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
 
                     // Appearance Section (Label + Icon)
@@ -373,6 +474,17 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                 ),
               ),
               actions: [
+                if (existingAction != null)
+                  TextButton(
+                    onPressed: () {
+                      widget.onActionRemoved(existingAction.id);
+                      Navigator.pop(context);
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
+                    child: const Text('Delete'),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text(
@@ -456,6 +568,10 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
         return Icons.terminal;
       case ActionType.hotkey:
         return Icons.keyboard;
+      case ActionType.toggle:
+        return Icons.toggle_on;
+      case ActionType.macro:
+        return Icons.playlist_play;
     }
   }
 
@@ -469,6 +585,10 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
         return 'Run Command';
       case ActionType.hotkey:
         return 'Hotkey';
+      case ActionType.toggle:
+        return 'Toggle';
+      case ActionType.macro:
+        return 'Multi-Action Macro';
     }
   }
 
@@ -482,6 +602,10 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
         return 'Terminal Command';
       case ActionType.hotkey:
         return 'Key Combination';
+      case ActionType.toggle:
+        return 'Toggle ID (Optional)';
+      case ActionType.macro:
+        return 'Macro Actions (JSON)';
     }
   }
 
@@ -495,6 +619,143 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
         return 'npm start';
       case ActionType.hotkey:
         return 'Ctrl + C';
+      case ActionType.toggle:
+        return 'my_toggle';
+      case ActionType.macro:
+        return '[...]';
     }
+  }
+
+  Widget _buildMacroList(
+    TextEditingController dataController,
+    VoidCallback onUpdate,
+  ) {
+    List<dynamic> actions = [];
+    try {
+      if (dataController.text.isNotEmpty) {
+        actions = jsonDecode(dataController.text);
+      }
+    } catch (_) {}
+
+    return ListView.builder(
+      itemCount: actions.length,
+      itemBuilder: (context, index) {
+        final actionMap = actions[index];
+        final typeIndex = actionMap['type'] as int;
+        final type = ActionType.values[typeIndex];
+        final data = actionMap['data'] as String;
+
+        return ListTile(
+          leading: Icon(_getIconForType(type), color: Colors.white70),
+          title: Text(
+            _getLabelForType(type),
+            style: const TextStyle(color: Colors.white),
+          ),
+          subtitle: Text(
+            data,
+            style: const TextStyle(color: Colors.white54),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete, color: Colors.redAccent),
+            onPressed: () {
+              actions.removeAt(index);
+              dataController.text = jsonEncode(actions);
+              onUpdate();
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddMacroActionDialog(
+    BuildContext context,
+    TextEditingController mainDataController,
+    VoidCallback onUpdate,
+  ) {
+    ActionType subType = ActionType.openUrl;
+    final subDataController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSubState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF2C2C2C),
+              title: const Text(
+                'Add Sub-Action',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButton<ActionType>(
+                    value: subType,
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF2C2C2C),
+                    items: ActionType.values
+                        .where(
+                          (t) => t != ActionType.macro,
+                        ) // Prevent nested macros for sanity
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(
+                              _getLabelForType(t),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setSubState(() => subType = v!),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: subDataController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: _getTargetLabel(subType),
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      hintText: _getHintText(subType),
+                      hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    List<dynamic> actions = [];
+                    try {
+                      if (mainDataController.text.isNotEmpty) {
+                        actions = jsonDecode(mainDataController.text);
+                      }
+                    } catch (_) {}
+
+                    actions.add({
+                      'type': subType.index,
+                      'data': subDataController.text,
+                    });
+                    mainDataController.text = jsonEncode(actions);
+                    onUpdate();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }

@@ -25,9 +25,18 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   final List<String> _logs = [];
   final TrayService _trayService = TrayService();
   bool _showLogs = false;
+  Set<int> _activeIndices = {};
 
-  // Temporary in-memory storage for configured actions
-  final Map<String, DeckAction> _actionMap = {};
+  // Profiles State
+  List<DeckProfile> _profiles = [
+    DeckProfile(id: 'default', name: 'Default Profile', actions: {}),
+  ];
+  String _currentProfileId = 'default';
+
+  DeckProfile get _currentProfile => _profiles.firstWhere(
+    (p) => p.id == _currentProfileId,
+    orElse: () => _profiles.first,
+  );
 
   @override
   void initState() {
@@ -56,27 +65,70 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   Future<void> _loadActions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String? actionsJson = prefs.getString('deck_actions');
-      if (actionsJson != null) {
-        final List<dynamic> decoded = jsonDecode(actionsJson);
-        setState(() {
+      final String? dataJson = prefs.getString('deck_data_v2');
+
+      if (dataJson != null) {
+        // Load v2 Data
+        final Map<String, dynamic> data = jsonDecode(dataJson);
+        _currentProfileId = data['currentProfileId'];
+        _profiles = (data['profiles'] as List)
+            .map((e) => DeckProfile.fromJson(e))
+            .toList();
+      } else {
+        // Check for v1 data (legacy)
+        final String? oldActionsJson = prefs.getString('deck_actions');
+        if (oldActionsJson != null) {
+          final List<dynamic> decoded = jsonDecode(oldActionsJson);
+          final Map<String, DeckAction> actions = {};
           for (var item in decoded) {
             final action = DeckAction.fromJson(item);
-            _actionMap[action.id] = action;
+            actions[action.id] = action;
           }
-        });
-        _log('Loaded ${_actionMap.length} actions from storage');
+          // Create default profile with migrated actions
+          _profiles = [
+            DeckProfile(
+              id: 'default',
+              name: 'Default Profile',
+              actions: actions,
+            ),
+          ];
+          _currentProfileId = 'default';
+          _log('Migrated legacy actions to Default Profile');
+          _saveActions(); // Save in new format immediately
+        } else {
+          // No data found, initialize fresh
+          _profiles = [
+            DeckProfile(id: 'default', name: 'Default Profile', actions: {}),
+          ];
+          _currentProfileId = 'default';
+        }
       }
+      setState(() {});
+      _log('Loaded ${_profiles.length} profiles. Active: $_currentProfileId');
     } catch (e) {
       _log('Error loading actions: $e');
+      // Fallback
+      _profiles = [
+        DeckProfile(id: 'default', name: 'Default Profile', actions: {}),
+      ];
+    }
+
+    if (_profiles.isEmpty) {
+      _profiles = [
+        DeckProfile(id: 'default', name: 'Default Profile', actions: {}),
+      ];
+      _currentProfileId = 'default';
     }
   }
 
   Future<void> _saveActions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final actionsList = _actionMap.values.map((e) => e.toJson()).toList();
-      await prefs.setString('deck_actions', jsonEncode(actionsList));
+      final data = {
+        'currentProfileId': _currentProfileId,
+        'profiles': _profiles.map((e) => e.toJson()).toList(),
+      };
+      await prefs.setString('deck_data_v2', jsonEncode(data));
     } catch (e) {
       _log('Error saving actions: $e');
     }
@@ -100,19 +152,17 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
     _serverService = ServerService(
       onLog: (message) {
         _log(message);
-
         if (message.contains('New client connected')) {
           Future.delayed(
             const Duration(milliseconds: 500),
             () => _broadcastSync(),
           );
         }
-
-        // Handle incoming commands
-        if (message.startsWith('Received: ')) {
-          final command = message.replaceFirst('Received: ', '').trim();
-          _handleCommand(command);
-        }
+      },
+      onMessage: (message) {
+        // Handle incoming commands directly from the message stream
+        final command = message.trim();
+        _handleCommand(command);
       },
     );
 
@@ -127,36 +177,271 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   }
 
   void _handleCommand(String command) {
-    if (command.startsWith('ACTION_')) {
-      final indexStr = command.split('_').last;
-      final index = int.tryParse(indexStr);
-      if (index != null) {
-        // Map 1-based index from mobile to 0-based array index
-        final actionKey = 'action_${index - 1}';
-        final action = _actionMap[actionKey];
+    if (command.startsWith('ACTION:')) {
+      final actionId = command.split(':').last;
 
-        if (action != null) {
-          _actionExecutor?.execute(action);
-        } else {
-          _log('No action configured for button $index');
-        }
+      // Visual Feedback
+      // Only match direct action IDs, not sub-actions or other formats
+      final match = RegExp(r'^action_(\d+)$').firstMatch(actionId);
+      if (match != null) {
+        final index = int.parse(match.group(1)!);
+        setState(() {
+          _activeIndices.add(index);
+        });
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) {
+            setState(() {
+              _activeIndices.remove(index);
+            });
+          }
+        });
+      }
+
+      final action = _currentProfile.actions[actionId];
+      if (action != null) {
+        _log('Executing ${action.label} (${action.type})');
+        _actionExecutor?.execute(action);
+      } else {
+        _log('No action configured for $actionId in ${_currentProfile.name}');
+      }
+    } else if (command.startsWith('SWITCH_PROFILE:')) {
+      final profileId = command.split(':').last;
+      final profile = _profiles.firstWhere(
+        (p) => p.id == profileId,
+        orElse: () => _currentProfile,
+      );
+
+      if (profile.id != _currentProfileId) {
+        setState(() => _currentProfileId = profile.id);
+        _log('Mobile switched to profile: ${profile.name}');
+        _broadcastSync();
       }
     }
   }
 
   void _onActionConfigured(DeckAction action) {
     setState(() {
-      _actionMap[action.id] = action;
+      _currentProfile.actions[action.id] = action;
     });
-    _log('Configured ${action.id}: ${action.label}');
+    _log('Configured ${action.id}: ${action.label} in ${_currentProfile.name}');
+    _saveActions();
+    _broadcastSync();
+  }
+
+  void _onActionRemoved(String actionId) {
+    setState(() {
+      _currentProfile.actions.remove(actionId);
+    });
+    _log('Removed action $actionId from ${_currentProfile.name}');
     _saveActions();
     _broadcastSync();
   }
 
   void _broadcastSync() {
-    final actionsList = _actionMap.values.map((e) => e.toJson()).toList();
-    final jsonStr = jsonEncode({'actions': actionsList});
+    final actionsList = _currentProfile.actions.values
+        .map((e) => e.toJson())
+        .toList();
+    final profilesList = _profiles
+        .map((p) => {'id': p.id, 'name': p.name})
+        .toList();
+
+    final jsonStr = jsonEncode({
+      'currentProfileId': _currentProfile.id,
+      'profiles': profilesList,
+      'actions': actionsList,
+    });
     _serverService?.broadcast('SYNC:$jsonStr');
+  }
+
+  void _onActionReordered(int oldIndex, int newIndex) {
+    setState(() {
+      final oldKey = 'action_$oldIndex';
+      final newKey = 'action_$newIndex';
+      final action = _currentProfile.actions[oldKey];
+
+      if (action != null) {
+        // If there's an action at the new index, swap them
+        if (_currentProfile.actions.containsKey(newKey)) {
+          final targetAction = _currentProfile.actions[newKey]!;
+          _currentProfile.actions[oldKey] = targetAction.copyWith(id: oldKey);
+        } else {
+          _currentProfile.actions.remove(oldKey);
+        }
+        _currentProfile.actions[newKey] = action.copyWith(id: newKey);
+      }
+    });
+    _saveActions();
+    _broadcastSync();
+  }
+
+  void _createProfile() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('New Profile'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'Profile Name'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  final newProfile = DeckProfile(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: controller.text,
+                    actions: {},
+                  );
+                  setState(() {
+                    _profiles.add(newProfile);
+                    _currentProfileId = newProfile.id;
+                  });
+                  _saveActions();
+                  _broadcastSync();
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showProfileSettings() {
+    final nameController = TextEditingController(text: _currentProfile.name);
+    int rows = _currentProfile.rows;
+    int cols = _currentProfile.columns;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Profile Settings'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Profile Name',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('Grid Size:'),
+                      const SizedBox(width: 16),
+                      DropdownButton<int>(
+                        value: rows,
+                        items: [3, 4, 5]
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text('$e Rows'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setStateDialog(() => rows = v!),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('x'),
+                      const SizedBox(width: 8),
+                      DropdownButton<int>(
+                        value: cols,
+                        items: [3, 4, 5, 6]
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text('$e Cols'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setStateDialog(() => cols = v!),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      // Update profile directly (creating a new instance to force rebuild if needed, though mutable change works too)
+                      final index = _profiles.indexWhere(
+                        (p) => p.id == _currentProfileId,
+                      );
+                      if (index != -1) {
+                        _profiles[index] = DeckProfile(
+                          id: _profiles[index].id,
+                          name: nameController.text,
+                          rows: rows,
+                          columns: cols,
+                          actions: _profiles[index].actions, // existing actions
+                        );
+                      }
+                    });
+                    _saveActions();
+                    _broadcastSync();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _deleteProfile(DeckProfile profile) {
+    if (_profiles.length <= 1) return; // Prevent deleting last profile
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete ${profile.name}?'),
+        content: const Text(
+          'Are you sure you want to delete this profile? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () {
+              setState(() {
+                _profiles.removeWhere((p) => p.id == profile.id);
+                if (_currentProfileId == profile.id) {
+                  _currentProfileId = _profiles.first.id;
+                }
+              });
+              _saveActions();
+              _broadcastSync();
+              Navigator.pop(context);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -183,6 +468,56 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
                   'Device: $_ipAddress',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+                const SizedBox(width: 32),
+                // Profile Selector
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _currentProfileId,
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                      borderRadius: BorderRadius.circular(12),
+                      items: _profiles.map((profile) {
+                        return DropdownMenuItem(
+                          value: profile.id,
+                          child: Text(profile.name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _currentProfileId = value);
+                          _broadcastSync();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'New Profile',
+                  onPressed: _createProfile,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.blueAccent),
+                  tooltip: 'Profile Settings',
+                  onPressed: _showProfileSettings,
+                ),
+                if (_profiles.length > 1)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                    ),
+                    tooltip: 'Delete Profile',
+                    onPressed: () => _deleteProfile(_currentProfile),
+                  ),
                 const Spacer(),
                 IconButton(
                   icon: Icon(
@@ -200,8 +535,16 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
             child: Stack(
               children: [
                 VirtualDeckGrid(
-                  actions: _actionMap,
+                  key: ValueKey(
+                    _currentProfileId,
+                  ), // Force rebuild when profile changes
+                  actions: _currentProfile.actions,
+                  rows: _currentProfile.rows,
+                  columns: _currentProfile.columns,
+                  activeIndices: _activeIndices,
                   onActionConfigured: _onActionConfigured,
+                  onActionRemoved: _onActionRemoved,
+                  onActionReordered: _onActionReordered,
                 ),
                 if (_showLogs) _buildLogsPanel(),
               ],
