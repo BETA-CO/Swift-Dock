@@ -32,7 +32,7 @@ class DeckGrid extends StatelessWidget {
                     child: DeckButton(
                       icon: action.icon,
                       label: action.label,
-                      onTap: () => onCommand('ACTION_${index + 1}'),
+                      onTap: () => onCommand('ACTION:action_$index'),
                       action: action,
                     ),
                   ),

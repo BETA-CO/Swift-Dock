@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:nsd/nsd.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../client/client_service.dart';
 import '../../shared/action_model.dart';
 import 'widgets/connection_screen.dart';
@@ -22,10 +23,24 @@ class _MobileHomeState extends State<MobileHome> {
   Map<int, DeckAction> _actions = {};
   List<Service> _discoveredServices = [];
 
+  // Profile State
+  String _currentProfileId = 'default';
+  List<Map<String, String>> _availableProfiles = [];
+
   @override
   void initState() {
     super.initState();
     _initServices();
+    _checkLastConnection();
+  }
+
+  Future<void> _checkLastConnection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastIp = prefs.getString('last_ip');
+    if (lastIp != null && lastIp.isNotEmpty) {
+      debugPrint('Found last IP: $lastIp, auto-connecting...');
+      _connect(lastIp);
+    }
   }
 
   void _initServices() {
@@ -72,23 +87,45 @@ class _MobileHomeState extends State<MobileHome> {
       if (jsonStr.isEmpty) return;
 
       final data = jsonDecode(jsonStr);
-      final List<dynamic> list = data['actions'];
-      final Map<int, DeckAction> newActions = {};
-      for (var item in list) {
-        final action = DeckAction.fromJson(item);
-        final indexStr = action.id.split('_').last;
-        final index = int.tryParse(indexStr);
-        if (index != null) {
-          newActions[index] = action;
+
+      // 1. Update Profiles List
+      if (data.containsKey('profiles')) {
+        _availableProfiles = (data['profiles'] as List).map((e) {
+          return {'id': e['id'].toString(), 'name': e['name'].toString()};
+        }).toList();
+      }
+
+      // 2. Update Current Profile ID
+      if (data.containsKey('currentProfileId')) {
+        _currentProfileId = data['currentProfileId'];
+      }
+
+      // 3. Update Actions
+      if (data.containsKey('actions')) {
+        final List<dynamic> list = data['actions'];
+        final Map<int, DeckAction> newActions = {};
+        for (var item in list) {
+          final action = DeckAction.fromJson(item);
+          final indexStr = action.id.split('_').last;
+          final index = int.tryParse(indexStr);
+          if (index != null) {
+            newActions[index] = action;
+          }
         }
+        if (mounted) {
+          setState(() => _actions = newActions);
+        }
+        debugPrint('Received SYNC with ${newActions.length} actions');
       }
-      if (mounted) {
-        setState(() => _actions = newActions);
-      }
-      debugPrint('Received SYNC with ${newActions.length} actions');
     } catch (e) {
       debugPrint('Error parsing sync data: $e');
     }
+  }
+
+  void _switchProfile(String profileId) {
+    _sendCommand('SWITCH_PROFILE:$profileId');
+    // Optimistic update
+    setState(() => _currentProfileId = profileId);
   }
 
   Future<void> _switchToLandscape() async {
@@ -112,8 +149,10 @@ class _MobileHomeState extends State<MobileHome> {
     super.dispose();
   }
 
-  void _connect(String ip) {
+  Future<void> _connect(String ip) async {
     _clientService?.connect(ip.trim());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_ip', ip.trim());
   }
 
   void _sendCommand(String command) {
@@ -132,11 +171,59 @@ class _MobileHomeState extends State<MobileHome> {
               elevation: 0,
             ),
       floatingActionButton: _status == 'Connected'
-          ? FloatingActionButton(
-              mini: true,
-              backgroundColor: Colors.red.withValues(alpha: 0.5),
-              onPressed: () => _clientService?.disconnect(),
-              child: const Icon(Icons.close),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Profile Selector FAB (with Disconnect option)
+                PopupMenuButton<String>(
+                  initialValue: _currentProfileId,
+                  onSelected: (value) {
+                    if (value == 'DISCONNECT') {
+                      _clientService?.disconnect();
+                    } else {
+                      _switchProfile(value);
+                    }
+                  },
+                  itemBuilder: (context) {
+                    return _availableProfiles.map((p) {
+                      return PopupMenuItem(
+                        value: p['id'],
+                        child: Text(p['name']!),
+                      );
+                    }).toList()..add(
+                      const PopupMenuItem(
+                        value: 'DISCONNECT',
+                        child: Row(
+                          children: [
+                            Icon(Icons.logout, color: Colors.red, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Disconnect',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 8,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.layers),
+                  ),
+                ),
+              ],
             )
           : null,
       backgroundColor: Theme.of(context).colorScheme.surface,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nsd/nsd.dart';
+import 'qr_scanner_screen.dart';
 
 class ConnectionScreen extends StatefulWidget {
   final Function(String) onConnect;
@@ -16,199 +17,289 @@ class ConnectionScreen extends StatefulWidget {
 }
 
 class _ConnectionScreenState extends State<ConnectionScreen> {
-  void _showManualConnectDialog() {
-    final TextEditingController ipController = TextEditingController();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 24,
-          right: 24,
-          top: 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Manual Connection',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ipController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'IP Address',
-                hintText: 'e.g. 192.168.1.5',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.wifi),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                if (ipController.text.isNotEmpty) {
-                  Navigator.pop(context);
-                  widget.onConnect(ipController.text);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: const Text('Connect'),
-            ),
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
+  bool _showManualInput = false;
+
+  void _scanQrCode() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const QrScannerScreen()),
     );
+
+    if (result != null && result is Map && result.containsKey('ip')) {
+      widget.onConnect(result['ip']);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 20),
-              Text(
-                'Select Device',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+      extendBodyBehindAppBar: true,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              Theme.of(context).colorScheme.surface,
+              Theme.of(context).colorScheme.surface,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 20),
+                // Header
+                Text(
+                  'Connect to\nDocker Portal',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    height: 1.1,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Looking for Stream Deck Server...',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 8),
+                Text(
+                  'Control your desktop from your phone',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 40),
 
-              // Discovery List or Scanning Indicator
-              Expanded(
-                child: widget.discoveredServices.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const CircularProgressIndicator(),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Scanning network...',
-                              style: TextStyle(color: Colors.grey[500]),
+                // Main Action: Scan QR
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Theme.of(context).colorScheme.primary,
+                                Theme.of(context).colorScheme.tertiary,
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      )
-                    : ListView.separated(
-                        itemCount: widget.discoveredServices.length,
-                        separatorBuilder: (c, i) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final service = widget.discoveredServices[index];
-                          // Use a set to avoid duplicate IPs if multiple addresses exist
-                          final ip = service.addresses?.isNotEmpty == true
-                              ? service.addresses!.first.address
-                              : service.host ?? 'Unknown IP';
-
-                          return Card(
-                            elevation: 0,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primaryContainer.withOpacity(0.3),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _scanQrCode,
+                          child: Padding(
+                            padding: const EdgeInsets.all(32.0),
+                            child: Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.qr_code_scanner_rounded,
+                                    size: 40,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Scan QR Code',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Tap to camera scan',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                  ),
+                                ),
+                              ],
                             ),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(16),
-                              onTap: () {
-                                if (service.addresses != null &&
-                                    service.addresses!.isNotEmpty) {
-                                  widget.onConnect(
-                                    service.addresses!.first.address,
-                                  );
-                                } else if (service.host != null) {
-                                  widget.onConnect(service.host!);
-                                }
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary.withOpacity(0.1),
-                                        shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Manual / Discovery Toggle
+                Row(
+                  children: [
+                    Text(
+                      'Nearby Devices',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (widget.discoveredServices.isEmpty)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Device List
+                Expanded(
+                  child: widget.discoveredServices.isEmpty
+                      ? Center(
+                          child: Text(
+                            'Searching for devices...',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(0.4),
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: widget.discoveredServices.length,
+                          separatorBuilder: (c, i) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final service = widget.discoveredServices[index];
+                            final ip = service.addresses?.isNotEmpty == true
+                                ? service.addresses!.first.address
+                                : service.host ?? 'Unknown IP';
+                            final name = service.name ?? 'Unknown Device';
+
+                            return Card(
+                              elevation: 0,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withOpacity(0.5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => widget.onConnect(ip),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.desktop_windows_rounded,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        Icons.desktop_windows,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            service.name ?? 'Unknown Device',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            ip,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey[400],
+                                            Text(
+                                              ip,
+                                              style: TextStyle(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withOpacity(0.5),
+                                                fontSize: 12,
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    const Icon(
-                                      Icons.chevron_right,
-                                      color: Colors.grey,
-                                    ),
-                                  ],
+                                      Icon(
+                                        Icons.arrow_forward_ios_rounded,
+                                        size: 16,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withOpacity(0.3),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-
-              const SizedBox(height: 24),
-              TextButton.icon(
-                onPressed: _showManualConnectDialog,
-                icon: const Icon(Icons.add),
-                label: const Text('Connect Manually'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey[600],
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                            );
+                          },
+                        ),
                 ),
-              ),
-            ],
+
+                // Manual IP Entry Toggle
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _showManualInput = !_showManualInput;
+                      });
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _showManualInput
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text("Enter IP Manually"),
+                      ],
+                    ),
+                  ),
+                ),
+
+                if (_showManualInput)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: "IP Address (e.g. 192.168.1.10)",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.wifi),
+                      ),
+                      onSubmitted: (value) {
+                        if (value.isNotEmpty) widget.onConnect(value);
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
