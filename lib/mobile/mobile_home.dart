@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:nsd/nsd.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../client/client_service.dart';
 import '../../shared/action_model.dart';
 import 'widgets/connection_screen.dart';
@@ -30,6 +31,16 @@ class _MobileHomeState extends State<MobileHome> {
   void initState() {
     super.initState();
     _initServices();
+    _checkLastConnection();
+  }
+
+  Future<void> _checkLastConnection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastIp = prefs.getString('last_ip');
+    if (lastIp != null && lastIp.isNotEmpty) {
+      debugPrint('Found last IP: $lastIp, auto-connecting...');
+      _connect(lastIp);
+    }
   }
 
   void _initServices() {
@@ -138,8 +149,10 @@ class _MobileHomeState extends State<MobileHome> {
     super.dispose();
   }
 
-  void _connect(String ip) {
+  Future<void> _connect(String ip) async {
     _clientService?.connect(ip.trim());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_ip', ip.trim());
   }
 
   void _sendCommand(String command) {
@@ -162,40 +175,53 @@ class _MobileHomeState extends State<MobileHome> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Profile Selector FAB
+                // Profile Selector FAB (with Disconnect option)
                 PopupMenuButton<String>(
                   initialValue: _currentProfileId,
-                  onSelected: _switchProfile,
+                  onSelected: (value) {
+                    if (value == 'DISCONNECT') {
+                      _clientService?.disconnect();
+                    } else {
+                      _switchProfile(value);
+                    }
+                  },
                   itemBuilder: (context) {
                     return _availableProfiles.map((p) {
                       return PopupMenuItem(
                         value: p['id'],
                         child: Text(p['name']!),
                       );
-                    }).toList();
+                    }).toList()..add(
+                      const PopupMenuItem(
+                        value: 'DISCONNECT',
+                        child: Row(
+                          children: [
+                            Icon(Icons.logout, color: Colors.red, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Disconnect',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
                   },
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer,
                       shape: BoxShape.circle,
-                      boxShadow: [
+                      boxShadow: const [
                         BoxShadow(
                           color: Colors.black26,
                           blurRadius: 8,
-                          offset: const Offset(0, 4),
+                          offset: Offset(0, 4),
                         ),
                       ],
                     ),
                     child: const Icon(Icons.layers),
                   ),
-                ),
-                const SizedBox(height: 16),
-                FloatingActionButton(
-                  mini: true,
-                  backgroundColor: Colors.red.withValues(alpha: 0.5),
-                  onPressed: () => _clientService?.disconnect(),
-                  child: const Icon(Icons.close),
                 ),
               ],
             )

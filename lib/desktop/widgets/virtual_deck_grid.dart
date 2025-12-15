@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../shared/action_model.dart';
 import '../services/metadata_service.dart';
 
@@ -183,7 +184,7 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
 
   void _showConfigurationDialog(int index, DeckAction? existingAction) {
     // Default values
-    ActionType selectedType = existingAction?.type ?? ActionType.openUrl;
+    ActionType? selectedType = existingAction?.type;
     TextEditingController dataController = TextEditingController(
       text: existingAction?.data ?? '',
     );
@@ -227,31 +228,42 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<ActionType>(
                           value: selectedType,
+                          hint: const Text(
+                            "Select Action Type",
+                            style: TextStyle(color: Colors.white54),
+                          ),
                           isExpanded: true,
                           dropdownColor: const Color(0xFF2C2C2C),
                           icon: const Icon(
                             Icons.arrow_drop_down,
                             color: Colors.white70,
                           ),
-                          items: ActionType.values.map((type) {
-                            return DropdownMenuItem(
-                              value: type,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _getIconForType(type),
-                                    size: 18,
-                                    color: Colors.white70,
+                          items: ActionType.values
+                              .where(
+                                (type) => type != ActionType.toggle,
+                              ) // Remove Toggle
+                              .map((type) {
+                                return DropdownMenuItem(
+                                  value: type,
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _getIconForType(type),
+                                        size: 18,
+                                        color: Colors.white70,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        _getLabelForType(type),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    _getLabelForType(type),
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                                );
+                              })
+                              .toList(),
                           onChanged: (value) {
                             if (value != null) {
                               setStateDialog(() => selectedType = value);
@@ -262,8 +274,18 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Dynamic Data Field or Macro Editor
-                    if (selectedType == ActionType.macro) ...[
+                    // Content based on selection
+                    if (selectedType == null) ...[
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: Text(
+                            "Please select an action type above.",
+                            style: TextStyle(color: Colors.white24),
+                          ),
+                        ),
+                      ),
+                    ] else if (selectedType == ActionType.macro) ...[
                       const Text(
                         'Macro Actions',
                         style: TextStyle(color: Colors.grey, fontSize: 12),
@@ -301,107 +323,42 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                       ),
                     ] else ...[
                       Text(
-                        _getTargetLabel(selectedType),
+                        _getTargetLabel(selectedType!),
                         style: const TextStyle(
                           color: Colors.grey,
                           fontSize: 12,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: dataController,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                hintText: _getHintText(selectedType),
-                                hintStyle: TextStyle(
-                                  color: Colors.grey.withOpacity(0.5),
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.05),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 14,
-                                ),
-                              ),
+
+                      // Hotkey Recorder or Default TextField
+                      if (selectedType == ActionType.hotkey) ...[
+                        HotkeyRecorder(
+                          initialValue: dataController.text,
+                          onRecorded: (value) {
+                            dataController.text = value;
+                            setStateDialog(() {});
+                          },
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            "Click above and perform the key combination.",
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontSize: 10,
                             ),
                           ),
-                          if (selectedType == ActionType.openApp) ...[
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: () async {
-                                FilePickerResult? result = await FilePicker
-                                    .platform
-                                    .pickFiles();
-                                if (result != null) {
-                                  final path = result.files.single.path!;
-                                  dataController.text = path;
-                                  // Auto-suggest label
-                                  if (labelController.text.isEmpty) {
-                                    labelController.text =
-                                        MetadataService.getAppNameFromPath(
-                                          path,
-                                        );
-                                  }
-                                  // Auto-fetch icon
-                                  if (pickedImageBase64 == null) {
-                                    pickedImageBase64 =
-                                        await MetadataService.fetchAppIcon(
-                                          path,
-                                        );
-                                  }
-                                  setStateDialog(() {});
-                                }
-                              },
-                              style: IconButton.styleFrom(
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.1,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              icon: Icon(
-                                Icons.folder_open,
-                                color: Colors.white.withValues(alpha: 0.7),
-                              ),
-                              tooltip: 'Browse',
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-
-                    // Appearance Section (Label + Icon)
-                    const Divider(color: Colors.white12),
-                    const SizedBox(height: 16),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Label (Optional)',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: labelController,
+                        ),
+                      ] else ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: dataController,
                                 style: const TextStyle(color: Colors.white),
                                 decoration: InputDecoration(
-                                  hintText: 'My Action',
+                                  hintText: _getHintText(selectedType!),
                                   hintStyle: TextStyle(
                                     color: Colors.grey.withOpacity(0.5),
                                   ),
@@ -411,65 +368,154 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide: BorderSide.none,
                                   ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (selectedType == ActionType.openApp) ...[
+                              const SizedBox(width: 8),
+                              IconButton(
+                                onPressed: () async {
+                                  FilePickerResult? result = await FilePicker
+                                      .platform
+                                      .pickFiles();
+                                  if (result != null) {
+                                    final path = result.files.single.path!;
+                                    dataController.text = path;
+                                    // Auto-suggest label
+                                    if (labelController.text.isEmpty) {
+                                      labelController.text =
+                                          MetadataService.getAppNameFromPath(
+                                            path,
+                                          );
+                                    }
+                                    // Auto-fetch icon
+                                    if (pickedImageBase64 == null) {
+                                      pickedImageBase64 =
+                                          await MetadataService.fetchAppIcon(
+                                            path,
+                                          );
+                                    }
+                                    setStateDialog(() {});
+                                  }
+                                },
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                icon: Icon(
+                                  Icons.folder_open,
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                ),
+                                tooltip: 'Browse',
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 20),
+
+                    // Appearance Section (Label + Icon)
+                    if (selectedType != null) ...[
+                      const Divider(color: Colors.white12),
+                      const SizedBox(height: 16),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Label (Optional)',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: labelController,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'My Action',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.withOpacity(0.5),
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.white.withOpacity(0.05),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Column(
+                            children: [
+                              const Text(
+                                'Icon',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  FilePickerResult? result = await FilePicker
+                                      .platform
+                                      .pickFiles(type: FileType.image);
+                                  if (result != null) {
+                                    final bytes = File(
+                                      result.files.single.path!,
+                                    ).readAsBytesSync();
+                                    setStateDialog(() {
+                                      pickedImageBase64 = base64Encode(bytes);
+                                    });
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.white12),
+                                    image: pickedImageBase64 != null
+                                        ? DecorationImage(
+                                            image: MemoryImage(
+                                              base64Decode(pickedImageBase64!),
+                                            ),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                  ),
+                                  child: pickedImageBase64 == null
+                                      ? const Icon(
+                                          Icons.add_photo_alternate,
+                                          color: Colors.white54,
+                                        )
+                                      : null,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Column(
-                          children: [
-                            const Text(
-                              'Icon',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            InkWell(
-                              onTap: () async {
-                                FilePickerResult? result = await FilePicker
-                                    .platform
-                                    .pickFiles(type: FileType.image);
-                                if (result != null) {
-                                  final bytes = File(
-                                    result.files.single.path!,
-                                  ).readAsBytesSync();
-                                  setStateDialog(() {
-                                    pickedImageBase64 = base64Encode(bytes);
-                                  });
-                                }
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.white12),
-                                  image: pickedImageBase64 != null
-                                      ? DecorationImage(
-                                          image: MemoryImage(
-                                            base64Decode(pickedImageBase64!),
-                                          ),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                ),
-                                child: pickedImageBase64 == null
-                                    ? const Icon(
-                                        Icons.add_photo_alternate,
-                                        color: Colors.white54,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -493,63 +539,64 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
+                if (selectedType != null)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () async {
-                    if (dataController.text.isNotEmpty) {
-                      // Fetch Metadata if needed (Loading State)
-                      if ((selectedType == ActionType.openUrl) &&
-                          (labelController.text.isEmpty ||
-                              pickedImageBase64 == null)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Fetching metadata...'),
-                            duration: Duration(milliseconds: 500),
-                          ),
+                    onPressed: () async {
+                      if (dataController.text.isNotEmpty) {
+                        // Fetch Metadata if needed
+                        if ((selectedType == ActionType.openUrl) &&
+                            (labelController.text.isEmpty ||
+                                pickedImageBase64 == null)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Fetching metadata...'),
+                              duration: Duration(milliseconds: 500),
+                            ),
+                          );
+
+                          if (labelController.text.isEmpty) {
+                            final title = await MetadataService.fetchPageTitle(
+                              dataController.text,
+                            );
+                            if (title != null) labelController.text = title;
+                          }
+                          if (pickedImageBase64 == null) {
+                            pickedImageBase64 =
+                                await MetadataService.fetchFaviconBase64(
+                                  dataController.text,
+                                );
+                          }
+                        }
+
+                        final newAction = DeckAction(
+                          id: 'action_$index',
+                          type: selectedType!,
+                          label: labelController.text.isEmpty
+                              ? 'Action'
+                              : labelController.text,
+                          icon: _getIconForType(selectedType!),
+                          data: dataController.text,
+                          imageBase64: pickedImageBase64,
                         );
 
-                        if (labelController.text.isEmpty) {
-                          final title = await MetadataService.fetchPageTitle(
-                            dataController.text,
-                          );
-                          if (title != null) labelController.text = title;
-                        }
-                        if (pickedImageBase64 == null) {
-                          pickedImageBase64 =
-                              await MetadataService.fetchFaviconBase64(
-                                dataController.text,
-                              );
-                        }
+                        setState(() => _configuredActions[index] = newAction);
+                        widget.onActionConfigured(newAction);
+                        Navigator.pop(context);
                       }
-
-                      final newAction = DeckAction(
-                        id: 'action_$index',
-                        type: selectedType,
-                        label: labelController.text.isEmpty
-                            ? 'Action'
-                            : labelController.text,
-                        icon: _getIconForType(selectedType),
-                        data: dataController.text,
-                        imageBase64: pickedImageBase64,
-                      );
-
-                      setState(() => _configuredActions[index] = newAction);
-                      widget.onActionConfigured(newAction);
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text('Save Action'),
-                ),
+                    },
+                    child: const Text('Save Action'),
+                  ),
               ],
             );
           },
@@ -601,11 +648,11 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
       case ActionType.runCommand:
         return 'Terminal Command';
       case ActionType.hotkey:
-        return 'Key Combination';
+        return 'Perform Hotkey';
       case ActionType.toggle:
-        return 'Toggle ID (Optional)';
+        return 'Toggle ID';
       case ActionType.macro:
-        return 'Macro Actions (JSON)';
+        return 'Macro Actions';
     }
   }
 
@@ -618,7 +665,7 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
       case ActionType.runCommand:
         return 'npm start';
       case ActionType.hotkey:
-        return 'Ctrl + C';
+        return 'Press keys...';
       case ActionType.toggle:
         return 'my_toggle';
       case ActionType.macro:
@@ -756,6 +803,151 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
           },
         );
       },
+    );
+  }
+}
+
+class HotkeyRecorder extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onRecorded;
+
+  const HotkeyRecorder({
+    super.key,
+    required this.initialValue,
+    required this.onRecorded,
+  });
+
+  @override
+  State<HotkeyRecorder> createState() => _HotkeyRecorderState();
+}
+
+class _HotkeyRecorderState extends State<HotkeyRecorder> {
+  late FocusNode _focusNode;
+  late TextEditingController _controller;
+  bool _isRecording = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _controller = TextEditingController(text: widget.initialValue);
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
+    // Ensure handler is removed if we dispose while recording
+    if (_isRecording) {
+      HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    }
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChange() {
+    // Only rebuild if the focus state literally changes to/from recording
+    final bool hasFocus = _focusNode.hasFocus;
+    if (hasFocus != _isRecording) {
+      setState(() {
+        _isRecording = hasFocus;
+      });
+
+      if (_isRecording) {
+        HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+      } else {
+        HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+      }
+    }
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (!_isRecording) return false;
+
+    // We only care about KeyDown for recording the combination
+    if (event is KeyDownEvent) {
+      final keys = <String>[];
+      if (HardwareKeyboard.instance.isControlPressed) keys.add('Ctrl');
+      if (HardwareKeyboard.instance.isShiftPressed) keys.add('Shift');
+      if (HardwareKeyboard.instance.isAltPressed) keys.add('Alt');
+      if (HardwareKeyboard.instance.isMetaPressed) keys.add('Meta');
+
+      final keyLabel = event.logicalKey.keyLabel;
+      if (![
+        'Control',
+        'Shift',
+        'Alt',
+        'Meta',
+        'Control Left',
+        'Control Right',
+        'Shift Left',
+        'Shift Right',
+        'Alt Left',
+        'Alt Right',
+        'Meta Left',
+        'Meta Right',
+      ].contains(keyLabel)) {
+        keys.add(keyLabel);
+      }
+
+      if (keys.isNotEmpty) {
+        final combo = keys.join(' + ');
+        // Update local controller first
+        _controller.text = combo;
+        // Notify parent
+        widget.onRecorded(combo);
+      }
+    }
+
+    // RETURN TRUE to block ALL keys (Down, Up, Repeat) from propagating
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        // Request focus to start recording
+        _focusNode.requestFocus();
+      },
+      child: Focus(
+        focusNode: _focusNode,
+        child: TextField(
+          controller: _controller,
+          enabled: false, // Visual only
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+          decoration: InputDecoration(
+            hintText: 'Click to record keys...',
+            hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
+            filled: true,
+            fillColor: _isRecording
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+                : Colors.white.withOpacity(0.05),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: _isRecording
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
+              ),
+            ),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.clear, size: 16),
+              onPressed: () {
+                _controller.clear();
+                widget.onRecorded('');
+                // Re-request focus to keep recording
+                _focusNode.requestFocus();
+              },
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

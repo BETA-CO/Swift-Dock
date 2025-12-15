@@ -4,6 +4,7 @@ import '../server/server_service.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:docker_portal/desktop/tray_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:docker_portal/desktop/widgets/virtual_deck_grid.dart';
 import 'package:docker_portal/desktop/services/action_executor.dart';
@@ -22,9 +23,10 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   ActionExecutor? _actionExecutor;
   DiscoveryService? _discoveryService;
   String _ipAddress = 'Fetching...';
+  bool _isConnected = false;
   final List<String> _logs = [];
   final TrayService _trayService = TrayService();
-  bool _showLogs = false;
+  bool _showLogs = false; // Kept internal for potential debug use
   Set<int> _activeIndices = {};
 
   // Profiles State
@@ -153,10 +155,13 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
       onLog: (message) {
         _log(message);
         if (message.contains('New client connected')) {
+          setState(() => _isConnected = true);
           Future.delayed(
             const Duration(milliseconds: 500),
             () => _broadcastSync(),
           );
+        } else if (message.contains('Client disconnected')) {
+          setState(() => _isConnected = false);
         }
       },
       onMessage: (message) {
@@ -456,98 +461,265 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   Widget build(BuildContext context) {
     return Scaffold(
       // Main Content
-      body: Column(
+      body: Stack(
         children: [
-          // Top Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            color: Theme.of(context).colorScheme.surface,
-            child: Row(
-              children: [
-                Text(
-                  'Device: $_ipAddress',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+          Column(
+            children: [
+              // Top Bar
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
                 ),
-                const SizedBox(width: 32),
-                // Profile Selector
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _currentProfileId,
-                      icon: const Icon(Icons.keyboard_arrow_down),
-                      borderRadius: BorderRadius.circular(12),
-                      items: _profiles.map((profile) {
-                        return DropdownMenuItem(
-                          value: profile.id,
-                          child: Text(profile.name),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() => _currentProfileId = value);
-                          _broadcastSync();
-                        }
-                      },
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).dividerColor.withOpacity(0.1),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  tooltip: 'New Profile',
-                  onPressed: _createProfile,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings, color: Colors.blueAccent),
-                  tooltip: 'Profile Settings',
-                  onPressed: _showProfileSettings,
-                ),
-                if (_profiles.length > 1)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.redAccent,
+                child: Row(
+                  children: [
+                    // IP Address Badge or Connected Status
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 500),
+                      child: _isConnected
+                          ? Container(
+                              key: const ValueKey('connected'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.green.withOpacity(0.2),
+                                ),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle,
+                                    size: 16,
+                                    color: Colors.green,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Client Connected',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Container(
+                              key: const ValueKey('ip'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.wifi,
+                                    size: 16,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SelectableText(
+                                    'Server IP: $_ipAddress',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                     ),
-                    tooltip: 'Delete Profile',
-                    onPressed: () => _deleteProfile(_currentProfile),
-                  ),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(
-                    _showLogs ? Icons.terminal : Icons.terminal_outlined,
-                  ),
-                  onPressed: () => setState(() => _showLogs = !_showLogs),
-                  tooltip: 'Toggle Logs',
+
+                    const Spacer(),
+
+                    // Profile Selector with better styling
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _currentProfileId,
+                          icon: const Icon(Icons.arrow_drop_down_rounded),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                          borderRadius: BorderRadius.circular(12),
+                          items: _profiles.map((profile) {
+                            return DropdownMenuItem(
+                              value: profile.id,
+                              child: Text(profile.name),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => _currentProfileId = value);
+                              _broadcastSync();
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 16),
+
+                    // Action Buttons
+                    IconButton.filledTonal(
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Create New Profile',
+                      onPressed: _createProfile,
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      icon: const Icon(Icons.settings),
+                      tooltip: 'Profile Grid Settings',
+                      onPressed: _showProfileSettings,
+                    ),
+                    if (_profiles.length > 1) ...[
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.red.withOpacity(0.1),
+                          foregroundColor: Colors.redAccent,
+                        ),
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: 'Delete Current Profile',
+                        onPressed: () => _deleteProfile(_currentProfile),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ),
+              ),
+
+              // Content
+              Expanded(
+                child: Stack(
+                  children: [
+                    VirtualDeckGrid(
+                      key: ValueKey(
+                        _currentProfileId,
+                      ), // Force rebuild when profile changes
+                      actions: _currentProfile.actions,
+                      rows: _currentProfile.rows,
+                      columns: _currentProfile.columns,
+                      activeIndices: _activeIndices,
+                      onActionConfigured: _onActionConfigured,
+                      onActionRemoved: _onActionRemoved,
+                      onActionReordered: _onActionReordered,
+                    ),
+                    if (_showLogs) _buildLogsPanel(),
+                  ],
+                ),
+              ),
+            ],
           ),
 
-          // Content
-          Expanded(
-            child: Stack(
-              children: [
-                VirtualDeckGrid(
-                  key: ValueKey(
-                    _currentProfileId,
-                  ), // Force rebuild when profile changes
-                  actions: _currentProfile.actions,
-                  rows: _currentProfile.rows,
-                  columns: _currentProfile.columns,
-                  activeIndices: _activeIndices,
-                  onActionConfigured: _onActionConfigured,
-                  onActionRemoved: _onActionRemoved,
-                  onActionReordered: _onActionReordered,
+          // QR Code Overlay
+          IgnorePointer(
+            ignoring: _isConnected,
+            child: AnimatedOpacity(
+              opacity: _isConnected ? 0.0 : 1.0,
+              duration: const Duration(seconds: 1),
+              curve: Curves.easeInOut,
+              child: Container(
+                color: Colors.black.withOpacity(0.8),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: QrImageView(
+                          data: jsonEncode({"ip": _ipAddress, "port": 8080}),
+                          version: QrVersions.auto,
+                          size: 250.0,
+                          backgroundColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      const Text(
+                        "Scan to Connect",
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Open the mobile app and scan this QR code",
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white.withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 48),
+                      // Manual IP fallback (still visible but secondary)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: SelectableText(
+                          'Finding via Discovery or Manual IP: $_ipAddress',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                if (_showLogs) _buildLogsPanel(),
-              ],
+              ),
             ),
           ),
         ],
@@ -556,50 +728,6 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   }
 
   Widget _buildLogsPanel() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: 200,
-      child: Container(
-        color: Colors.black87,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  const Text(
-                    'Console Output',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 16, color: Colors.grey),
-                    onPressed: () => setState(() => _showLogs = false),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Colors.grey),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(8),
-                itemCount: _logs.length,
-                itemBuilder: (context, index) {
-                  return Text(
-                    _logs[index],
-                    style: const TextStyle(
-                      fontFamily: 'Consolas',
-                      fontSize: 12,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
