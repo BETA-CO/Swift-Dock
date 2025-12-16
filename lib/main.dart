@@ -2,14 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'desktop/desktop_home.dart';
 import 'mobile/mobile_home.dart';
+import 'shared/theme.dart';
 
 import 'package:window_manager/window_manager.dart';
 
 import 'package:flutter/services.dart';
 
-import 'package:system_tray/system_tray.dart';
-
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Desktop Setup
@@ -23,31 +22,18 @@ void main() async {
       titleBarStyle: TitleBarStyle.hidden,
     );
 
-    // System Tray Setup
-    final AppWindow appWindow = AppWindow();
-    final SystemTray systemTray = SystemTray();
-
-    await systemTray.initSystemTray(
-      title: "Docker Portal",
-      iconPath: Platform.isWindows
-          ? 'assets/app_icon.ico'
-          : 'assets/app_icon.png',
-    );
-
-    final Menu menu = Menu();
-    await menu.buildFrom([
-      MenuItemLabel(label: 'Show', onClicked: (menuItem) => appWindow.show()),
-      MenuItemLabel(label: 'Exit', onClicked: (menuItem) => appWindow.close()),
-    ]);
-
-    await systemTray.setContextMenu(menu);
+    // System Tray is handled by TrayService in DesktopHome
 
     // Handle Window Close -> Minimize to Tray
     await windowManager.setPreventClose(true);
 
+    bool isAutostart = args.contains('--autostart');
+
     windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
+      if (!isAutostart) {
+        await windowManager.show();
+        await windowManager.focus();
+      }
     });
   }
   // Mobile Setup
@@ -92,25 +78,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Docker Portal',
+      title: 'Swift Dock',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF6200EE),
-          surface: Color(0xFF1E1E1E),
-          surfaceContainerHighest: Color(0xFF2C2C2C),
-          onSurface: Colors.white,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
-          elevation: 0,
-          scrolledUnderElevation: 0,
-        ),
-      ),
+      darkTheme: AppTheme.darkTheme,
       home: const PlatformWrapper(),
     );
   }

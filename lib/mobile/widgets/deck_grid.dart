@@ -11,7 +11,7 @@ class DeckGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black, // Ensure solid background
+      // color: Colors.transparent, // Removed solid background
       padding: const EdgeInsets.all(4), // Minimal outer padding
       child: Column(
         children: List.generate(3, (rowIndex) {

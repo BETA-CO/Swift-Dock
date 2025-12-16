@@ -1,0 +1,9 @@
+maintainer: Swift Dock <maintainer@example.com>
+app_name: Swift Dock
+description: Swift Dock Application
+version: 1.0.0+1
+package_name: swift_dock
+section: utils
+priority: optional
+installed_size: 1024
+executable_name: docker_portal

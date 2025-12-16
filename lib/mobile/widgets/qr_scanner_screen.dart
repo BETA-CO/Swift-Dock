@@ -114,9 +114,9 @@ class CustomQrOverlayShape extends ShapeBorder {
 
   @override
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    final _cutOutSize = cutOutSize;
-    final _borderRadius = borderRadius;
-    final _borderLength = borderLength;
+    final cutOutSize = this.cutOutSize;
+    final borderRadius = this.borderRadius;
+    final borderLength = this.borderLength;
 
     final Paint paint = Paint()
       ..color = borderColor
@@ -135,10 +135,10 @@ class CustomQrOverlayShape extends ShapeBorder {
         RRect.fromRectAndRadius(
           Rect.fromCenter(
             center: rect.center,
-            width: _cutOutSize,
-            height: _cutOutSize,
+            width: cutOutSize,
+            height: cutOutSize,
           ),
-          Radius.circular(_borderRadius),
+          Radius.circular(borderRadius),
         ),
       );
 
@@ -148,59 +148,59 @@ class CustomQrOverlayShape extends ShapeBorder {
     final center = rect.center;
     final cutOutRect = Rect.fromCenter(
       center: center,
-      width: _cutOutSize,
-      height: _cutOutSize,
+      width: cutOutSize,
+      height: cutOutSize,
     );
 
     // Top Left
     canvas.drawPath(
       Path()
-        ..moveTo(cutOutRect.left, cutOutRect.top + _borderLength)
-        ..lineTo(cutOutRect.left, cutOutRect.top + _borderRadius)
+        ..moveTo(cutOutRect.left, cutOutRect.top + borderLength)
+        ..lineTo(cutOutRect.left, cutOutRect.top + borderRadius)
         ..arcToPoint(
-          Offset(cutOutRect.left + _borderRadius, cutOutRect.top),
-          radius: Radius.circular(_borderRadius),
+          Offset(cutOutRect.left + borderRadius, cutOutRect.top),
+          radius: Radius.circular(borderRadius),
         )
-        ..lineTo(cutOutRect.left + _borderLength, cutOutRect.top),
+        ..lineTo(cutOutRect.left + borderLength, cutOutRect.top),
       paint,
     );
 
     // Top Right
     canvas.drawPath(
       Path()
-        ..moveTo(cutOutRect.right - _borderLength, cutOutRect.top)
-        ..lineTo(cutOutRect.right - _borderRadius, cutOutRect.top)
+        ..moveTo(cutOutRect.right - borderLength, cutOutRect.top)
+        ..lineTo(cutOutRect.right - borderRadius, cutOutRect.top)
         ..arcToPoint(
-          Offset(cutOutRect.right, cutOutRect.top + _borderRadius),
-          radius: Radius.circular(_borderRadius),
+          Offset(cutOutRect.right, cutOutRect.top + borderRadius),
+          radius: Radius.circular(borderRadius),
         )
-        ..lineTo(cutOutRect.right, cutOutRect.top + _borderLength),
+        ..lineTo(cutOutRect.right, cutOutRect.top + borderLength),
       paint,
     );
 
     // Bottom Right
     canvas.drawPath(
       Path()
-        ..moveTo(cutOutRect.right, cutOutRect.bottom - _borderLength)
-        ..lineTo(cutOutRect.right, cutOutRect.bottom - _borderRadius)
+        ..moveTo(cutOutRect.right, cutOutRect.bottom - borderLength)
+        ..lineTo(cutOutRect.right, cutOutRect.bottom - borderRadius)
         ..arcToPoint(
-          Offset(cutOutRect.right - _borderRadius, cutOutRect.bottom),
-          radius: Radius.circular(_borderRadius),
+          Offset(cutOutRect.right - borderRadius, cutOutRect.bottom),
+          radius: Radius.circular(borderRadius),
         )
-        ..lineTo(cutOutRect.right - _borderLength, cutOutRect.bottom),
+        ..lineTo(cutOutRect.right - borderLength, cutOutRect.bottom),
       paint,
     );
 
     // Bottom Left
     canvas.drawPath(
       Path()
-        ..moveTo(cutOutRect.left + _borderLength, cutOutRect.bottom)
-        ..lineTo(cutOutRect.left + _borderRadius, cutOutRect.bottom)
+        ..moveTo(cutOutRect.left + borderLength, cutOutRect.bottom)
+        ..lineTo(cutOutRect.left + borderRadius, cutOutRect.bottom)
         ..arcToPoint(
-          Offset(cutOutRect.left, cutOutRect.bottom - _borderRadius),
-          radius: Radius.circular(_borderRadius),
+          Offset(cutOutRect.left, cutOutRect.bottom - borderRadius),
+          radius: Radius.circular(borderRadius),
         )
-        ..lineTo(cutOutRect.left, cutOutRect.bottom - _borderLength),
+        ..lineTo(cutOutRect.left, cutOutRect.bottom - borderLength),
       paint,
     );
   }
