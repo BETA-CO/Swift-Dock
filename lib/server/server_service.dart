@@ -45,7 +45,7 @@ class ServerService {
     var handler = webSocketHandler((webSocket, protocol) {
       final channel = webSocket;
       _clients.add(channel);
-      onLog('New client connected');
+      onLog('Clients connected: ${_clients.length}'); // Updated log format
 
       webSocket.stream.listen(
         (message) {
@@ -54,7 +54,7 @@ class ServerService {
         },
         onDone: () {
           _clients.remove(webSocket);
-          onLog('Client disconnected');
+          onLog('Clients connected: ${_clients.length}'); // Updated log format
         },
       );
     });

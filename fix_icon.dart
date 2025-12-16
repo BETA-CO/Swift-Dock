@@ -8,5 +8,5 @@ void main() {
 
   final file = File('assets/app_icon.ico');
   file.writeAsBytesSync(base64Decode(base64Ico));
-  print('Successfully wrote valid ICO file to ${file.path}');
+  stdout.writeln('Successfully wrote valid ICO file to ${file.path}');
 }

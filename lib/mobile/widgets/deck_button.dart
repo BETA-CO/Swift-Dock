@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../shared/action_model.dart';
+import '../../shared/theme.dart';
 
 class DeckButton extends StatefulWidget {
   final IconData icon;
@@ -77,20 +78,17 @@ class _DeckButtonState extends State<DeckButton>
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                    Theme.of(context).colorScheme.surfaceContainerLow,
-                  ],
+                  colors: [AppTheme.surfaceLight, AppTheme.surface],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 5,
                     offset: const Offset(2, 2),
                   ),
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     blurRadius: 5,
                     offset: const Offset(-1, -1),
                   ),
@@ -109,17 +107,16 @@ class _DeckButtonState extends State<DeckButton>
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          widget.icon,
-                          size: 32,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                        Icon(widget.icon, size: 32, color: AppTheme.primary),
                         const SizedBox(height: 8),
                         Text(
                           widget.label,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),

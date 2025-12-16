@@ -7,7 +7,10 @@ import '../../shared/action_model.dart';
 import 'widgets/connection_screen.dart';
 import 'widgets/deck_grid.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:docker_portal/mobile/services/mobile_discovery_service.dart';
+
+import '../../shared/widgets.dart';
 
 class MobileHome extends StatefulWidget {
   const MobileHome({super.key});
@@ -51,11 +54,13 @@ class _MobileHomeState extends State<MobileHome> {
           if (mounted) {
             setState(() => _status = 'Connected');
             _switchToLandscape();
+            WakelockPlus.enable(); // Keep screen on when connected
           }
         } else if (log.startsWith('Disconnected') || log.startsWith('Error')) {
           if (mounted) {
             setState(() => _status = 'Disconnected');
             _switchToPortrait();
+            WakelockPlus.disable(); // Allow screen to sleep when disconnected
           }
         }
         debugPrint('Client Log: $log');
@@ -145,6 +150,8 @@ class _MobileHomeState extends State<MobileHome> {
   void dispose() {
     _clientService?.disconnect();
     _discoveryService?.stopDiscovery();
+    _discoveryService?.stopDiscovery();
+    WakelockPlus.disable();
     _switchToPortrait();
     super.dispose();
   }
@@ -162,12 +169,14 @@ class _MobileHomeState extends State<MobileHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       // Only show AppBar when disconnected to save space in "Deck Mode"
       appBar: _status == 'Connected'
           ? null
           : AppBar(
-              title: const Text('Stream Deck Remote'),
-              backgroundColor: Theme.of(context).colorScheme.surface,
+              title: const Text('Swift Dock Remote'),
+              backgroundColor:
+                  Colors.transparent, // Let AnimatedBackground show
               elevation: 0,
             ),
       floatingActionButton: _status == 'Connected'
@@ -226,16 +235,20 @@ class _MobileHomeState extends State<MobileHome> {
               ],
             )
           : null,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _status == 'Connected'
-            ? DeckGrid(onCommand: _sendCommand, actions: _actions)
-            : ConnectionScreen(
-                onConnect: _connect,
-                discoveredServices: _discoveredServices,
+      backgroundColor: Colors.transparent,
+      body: _status == 'Connected'
+          ? SafeArea(
+              child: DeckGrid(onCommand: _sendCommand, actions: _actions),
+            )
+          : AnimatedBackground(
+              child: SafeArea(
+                bottom: false,
+                child: ConnectionScreen(
+                  onConnect: _connect,
+                  discoveredServices: _discoveredServices,
+                ),
               ),
-      ),
+            ),
     );
   }
 }
