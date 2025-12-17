@@ -6,7 +6,7 @@ class TrayService {
   final SystemTray _systemTray = SystemTray();
   final AppWindow _appWindow = AppWindow();
 
-  Future<void> initSystemTray() async {
+  Future<void> initSystemTray({required VoidCallback onExit}) async {
     String iconPath = Platform.isWindows
         ? 'assets/app_icon.ico'
         : 'assets/app_icon.png';
@@ -29,7 +29,12 @@ class TrayService {
     final Menu menu = Menu();
     await menu.buildFrom([
       MenuItemLabel(label: 'Show', onClicked: (menuItem) => _appWindow.show()),
-      MenuItemLabel(label: 'Exit', onClicked: (menuItem) => _appWindow.close()),
+      MenuItemLabel(
+        label: 'Exit',
+        onClicked: (menuItem) {
+          onExit();
+        },
+      ),
     ]);
 
     await _systemTray.setContextMenu(menu);

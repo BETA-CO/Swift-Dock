@@ -30,6 +30,8 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   final TrayService _trayService = TrayService();
   final bool _showLogs = false; // Kept internal for potential debug use
   final Set<int> _activeIndices = {};
+  bool _isQuitting = false;
+  String? _serverName;
 
   // Profiles State
   List<DeckProfile> _profiles = [
@@ -52,7 +54,21 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   }
 
   Future<void> _initServices() async {
-    await _trayService.initSystemTray();
+    await _trayService.initSystemTray(
+      onExit: () {
+        _isQuitting = true;
+        windowManager.setPreventClose(false);
+        windowManager.close();
+      },
+    );
+
+    await _loadServerName();
+    if (_serverName == null) {
+      if (mounted) {
+        await _showNameSetupDialog();
+      }
+    }
+
     await _loadActions();
 
     _actionExecutor = ActionExecutor(onLog: (message) => _log(message));
@@ -61,9 +77,69 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
 
     // Register service after server starts
     // We register on port 8080 as hardcoded in ServerService
-    if (_serverService != null) {
-      await _discoveryService?.registerService(8080);
+    if (_serverService != null && _serverName != null) {
+      await _discoveryService?.registerService(8080, _serverName!);
     }
+  }
+
+  Future<void> _loadServerName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _serverName = prefs.getString('server_name');
+    });
+  }
+
+  Future<void> _saveServerName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_name', name);
+    setState(() {
+      _serverName = name;
+    });
+  }
+
+  Future<void> _showNameSetupDialog() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return PopScope(
+          canPop: false, // Prevent back button
+          child: AlertDialog(
+            title: const Text('Setup Device Name'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter a name for this PC. This will be shown on your mobile device.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: 'Device Name',
+                    hintText: 'e.g. My Gaming PC',
+                    border: OutlineInputBorder(),
+                  ),
+                  autofocus: true,
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  if (controller.text.trim().isNotEmpty) {
+                    _saveServerName(controller.text.trim());
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text('Save & Continue'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadActions() async {
@@ -147,7 +223,7 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
   @override
   void onWindowClose() async {
     bool isPreventClose = await windowManager.isPreventClose();
-    if (isPreventClose) {
+    if (isPreventClose && !_isQuitting) {
       windowManager.hide();
     }
   }
@@ -330,6 +406,7 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
 
   void _showProfileSettings() {
     final nameController = TextEditingController(text: _currentProfile.name);
+    final deviceNameController = TextEditingController(text: _serverName ?? '');
     int rows = _currentProfile.rows;
     int cols = _currentProfile.columns;
 
@@ -339,14 +416,34 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text('Profile Settings'),
+              title: const Text('Settings'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const Text(
+                    'Device Settings',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: deviceNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Device Name (for Discovery)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const Divider(height: 32),
+                  const Text(
+                    'Profile Settings',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: nameController,
                     decoration: const InputDecoration(
                       labelText: 'Profile Name',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -391,7 +488,18 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    if (deviceNameController.text.trim().isNotEmpty) {
+                      final newName = deviceNameController.text.trim();
+                      if (newName != _serverName) {
+                        await _saveServerName(newName);
+                        // Re-register service
+                        _discoveryService?.unregisterService();
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        _discoveryService?.registerService(8080, newName);
+                      }
+                    }
+
                     setState(() {
                       // Update profile directly (creating a new instance to force rebuild if needed, though mutable change works too)
                       final index = _profiles.indexWhere(
@@ -409,7 +517,7 @@ class _DesktopHomeState extends State<DesktopHome> with WindowListener {
                     });
                     _saveActions();
                     _broadcastSync();
-                    Navigator.pop(context);
+                    if (context.mounted) Navigator.pop(context);
                   },
                   child: const Text('Save'),
                 ),

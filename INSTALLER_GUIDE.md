@@ -1,6 +1,6 @@
 # Installer Generation Guide
 
-This guide explains how to build the release binaries and generate installers for Windows, Linux, and macOS.
+This guide explains how to build the release binaries and generate installers for Windows, Linux, macOS, and Android.
 
 ## 1. Windows Installer (`.exe`)
 **Prerequisites**:
@@ -55,3 +55,13 @@ This guide explains how to build the release binaries and generate installers fo
      "Swift Dock.dmg" \
      "build/macos/Build/Products/Release/docker_portal.app"
    ```
+
+## 4. Android APK (`.apk`)
+**Steps**:
+1. Build the release APK:
+   ```bash
+   flutter build apk --release --no-tree-shake-icons
+   ```
+   > **Note**: The `--no-tree-shake-icons` flag is required because the app loads icons dynamically from JSON configuration.
+
+2. The APK will be generated in `build/app/outputs/flutter-apk/app-release.apk`.

@@ -8,7 +8,7 @@ class DiscoveryService {
 
   DiscoveryService({required this.onLog});
 
-  Future<void> registerService(int port) async {
+  Future<void> registerService(int port, String serviceName) async {
     try {
       // It's helpful to get the actual IP to debug/confirm,
       // though mDNS handles the resolution.
@@ -22,7 +22,7 @@ class DiscoveryService {
 
       _registration = await register(
         Service(
-          name: 'DockerPortal', // This might be auto-renamed if conflict
+          name: serviceName, // Use custom name
           type: serviceType,
           port: port,
           txt: {'os': utf8.encode('windows')}, // Optional metadata
