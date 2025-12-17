@@ -1128,7 +1128,12 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                               value: selectedType,
                               dropdownColor: AppTheme.surface,
                               isExpanded: true,
-                              items: [ActionType.hotkey, ActionType.runCommand]
+                              items: ActionType.values
+                                  .where(
+                                    (t) =>
+                                        t != ActionType.macro &&
+                                        t != ActionType.toggle,
+                                  )
                                   .map((type) {
                                     return DropdownMenuItem(
                                       value: type,
@@ -1163,19 +1168,93 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                       const SizedBox(height: 16),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: selectedType == ActionType.hotkey
-                            ? HotkeyRecorder(
+                        child: Column(
+                          children: [
+                            if (selectedType == ActionType.hotkey)
+                              HotkeyRecorder(
                                 initialValue: subDataController.text,
                                 onRecorded: (value) {
                                   subDataController.text = value;
                                   setStateDialog(() {});
                                 },
                               )
-                            : TextField(
+                            else if (selectedType == ActionType.openApp)
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: subDataController,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: _getTargetLabel(
+                                          selectedType,
+                                        ),
+                                        labelStyle: const TextStyle(
+                                          color: Colors.white70,
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.black26,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Tooltip(
+                                    message: 'Browse Applications',
+                                    child: InkWell(
+                                      onTap: () {
+                                        final dummyLabel =
+                                            TextEditingController();
+                                        _showAppSelector(
+                                          context,
+                                          subDataController,
+                                          dummyLabel,
+                                          (_) {
+                                            // Icon ignore for macro steps
+                                            setStateDialog(() {});
+                                          },
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Container(
+                                        width: 50,
+                                        height: 50,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primary,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppTheme.primary
+                                                  .withValues(alpha: 0.4),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.apps,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              TextField(
                                 controller: subDataController,
                                 style: const TextStyle(color: Colors.white),
                                 decoration: InputDecoration(
-                                  labelText: 'Command',
+                                  labelText: _getTargetLabel(selectedType),
                                   labelStyle: const TextStyle(
                                     color: Colors.white70,
                                   ),
@@ -1187,6 +1266,8 @@ class _VirtualDeckGridState extends State<VirtualDeckGrid> {
                                   ),
                                 ),
                               ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
                       Padding(

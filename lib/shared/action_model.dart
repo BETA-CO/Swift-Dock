@@ -31,11 +31,40 @@ class DeckAction {
   }
 
   factory DeckAction.fromJson(Map<String, dynamic> json) {
+    // Helper to resolve icon from codePoint or fallback
+    IconData resolveIcon(int? codePoint) {
+      if (codePoint == Icons.link.codePoint) {
+        return Icons.link;
+      }
+      if (codePoint == Icons.apps.codePoint) {
+        return Icons.apps;
+      }
+      if (codePoint == Icons.terminal.codePoint) {
+        return Icons.terminal;
+      }
+      if (codePoint == Icons.keyboard.codePoint) {
+        return Icons.keyboard;
+      }
+      if (codePoint == Icons.toggle_on.codePoint) {
+        return Icons.toggle_on;
+      }
+      if (codePoint == Icons.playlist_play.codePoint) {
+        return Icons.playlist_play;
+      }
+      // Add other potential icons used in the app if necessary
+      if (codePoint == Icons.add_rounded.codePoint) {
+        return Icons.add_rounded;
+      }
+
+      // Default fallback if unknown (prevents build error by returning constant)
+      return Icons.help_outline;
+    }
+
     return DeckAction(
       id: json['id'],
       type: ActionType.values[json['type']],
       label: json['label'],
-      icon: IconData(json['icon'], fontFamily: 'MaterialIcons'),
+      icon: resolveIcon(json['icon']),
       data: json['data'],
       imageBase64: json['imageBase64'],
     );
